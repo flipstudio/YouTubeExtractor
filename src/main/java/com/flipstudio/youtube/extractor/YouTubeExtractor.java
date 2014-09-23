@@ -1,7 +1,8 @@
 package com.flipstudio.youtube.extractor;
 
 import android.net.Uri;
-import android.os.Handler;
+import android.os.*;
+import android.os.Process;
 import android.util.SparseArray;
 import android.webkit.MimeTypeMap;
 import java.io.BufferedReader;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import javax.net.ssl.HttpsURLConnection;
 
+import static android.os.Process.THREAD_PRIORITY_BACKGROUND;
 import static java.util.Arrays.asList;
 
 /**
@@ -66,48 +68,53 @@ public final class YouTubeExtractor {
 
     final String link = String.format("https://www.youtube.com/get_video_info?video_id=%s%s&ps=default&eurl=&gl=US&hl=%s", mVideoIdentifier, elField, language);
 
-    final Handler handler = new Handler();
+		final HandlerThread youtubeExtractorThread = new HandlerThread("YouTubeExtractorThread", THREAD_PRIORITY_BACKGROUND);
+		youtubeExtractorThread.start();
 
-    new Thread(new Runnable() {
-      @Override public void run() {
-        try {
-          mConnection = (HttpsURLConnection) new URL(link).openConnection();
-          mConnection.setRequestProperty("Accept-Language", language);
+    final Handler youtubeExtractorHandler = new Handler(youtubeExtractorThread.getLooper());
 
-          BufferedReader reader = new BufferedReader(new InputStreamReader(mConnection.getInputStream()));
-          StringBuilder builder = new StringBuilder();
-          String line;
+		youtubeExtractorHandler.post(new Runnable() {
+			@Override public void run() {
+				try {
+					mConnection = (HttpsURLConnection) new URL(link).openConnection();
+					mConnection.setRequestProperty("Accept-Language", language);
 
-          while ((line = reader.readLine()) != null && !mCancelled) builder.append(line);
+					BufferedReader reader = new BufferedReader(new InputStreamReader(mConnection.getInputStream()));
+					StringBuilder builder = new StringBuilder();
+					String line;
 
-          reader.close();
+					while ((line = reader.readLine()) != null && !mCancelled) builder.append(line);
 
-          if (!mCancelled) {
-            final Uri uri = getYouTubeUri(builder.toString());
+					reader.close();
 
-            handler.post(new Runnable() {
-              @Override public void run() {
-                if (!mCancelled && listener != null) {
-                  listener.onSuccess(uri);
-                }
-              }
-            });
-          }
-        } catch (final Exception e) {
-          handler.post(new Runnable() {
-            @Override public void run() {
-              if (!mCancelled && listener != null) {
-                listener.onFailure(new Error(e));
-              }
-            }
-          });
-        } finally {
-          if (mConnection != null) {
-            mConnection.disconnect();
-          }
-        }
-      }
-    }).start();
+					if (!mCancelled) {
+						final Uri uri = getYouTubeUri(builder.toString());
+
+						youtubeExtractorHandler.post(new Runnable() {
+							@Override public void run() {
+								if (!mCancelled && listener != null) {
+									listener.onSuccess(uri);
+								}
+							}
+						});
+					}
+				} catch (final Exception e) {
+					youtubeExtractorHandler.post(new Runnable() {
+						@Override public void run() {
+							if (!mCancelled && listener != null) {
+								listener.onFailure(new Error(e));
+							}
+						}
+					});
+				} finally {
+					if (mConnection != null) {
+						mConnection.disconnect();
+					}
+
+					youtubeExtractorThread.quitSafely();
+				}
+			}
+		});
   }
 
   public void cancelExtracting() {
