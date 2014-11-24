@@ -2,7 +2,6 @@ package com.flipstudio.youtube.extractor;
 
 import android.net.Uri;
 import android.os.*;
-import android.os.Process;
 import android.util.SparseArray;
 import android.webkit.MimeTypeMap;
 import java.io.BufferedReader;
@@ -73,6 +72,8 @@ public final class YouTubeExtractor {
 
     final Handler youtubeExtractorHandler = new Handler(youtubeExtractorThread.getLooper());
 
+    final Handler listenerHandler = new Handler(Looper.getMainLooper());
+
 		youtubeExtractorHandler.post(new Runnable() {
 			@Override public void run() {
 				try {
@@ -88,18 +89,18 @@ public final class YouTubeExtractor {
 					reader.close();
 
 					if (!mCancelled) {
-						final Uri uri = getYouTubeUri(builder.toString());
+            final YouTubeExtractorResult result = getYouTubeResult(builder.toString());
 
-						youtubeExtractorHandler.post(new Runnable() {
+            listenerHandler.post(new Runnable() {
 							@Override public void run() {
 								if (!mCancelled && listener != null) {
-									listener.onSuccess(uri);
+									listener.onSuccess(result);
 								}
 							}
 						});
 					}
 				} catch (final Exception e) {
-					youtubeExtractorHandler.post(new Runnable() {
+          listenerHandler.post(new Runnable() {
 						@Override public void run() {
 							if (!mCancelled && listener != null) {
 								listener.onFailure(new Error(e));
@@ -111,7 +112,7 @@ public final class YouTubeExtractor {
 						mConnection.disconnect();
 					}
 
-					youtubeExtractorThread.quitSafely();
+					youtubeExtractorThread.quit();
 				}
 			}
 		});
@@ -123,8 +124,7 @@ public final class YouTubeExtractor {
   //endregion
 
   //region Private
-  private static HashMap<String, String> getQueryMap(String queryString, String charsetName)
-      throws UnsupportedEncodingException {
+  private static HashMap<String, String> getQueryMap(String queryString, String charsetName) throws UnsupportedEncodingException {
     HashMap<String, String> map = new HashMap<String, String>();
 
     String[] fields = queryString.split("&");
@@ -141,9 +141,10 @@ public final class YouTubeExtractor {
     return map;
   }
 
-  private Uri getYouTubeUri(String html)
-      throws UnsupportedEncodingException, YouTubeExtractorException {
+  private YouTubeExtractorResult getYouTubeResult(String html) throws UnsupportedEncodingException, YouTubeExtractorException {
     HashMap<String, String> video = getQueryMap(html, "UTF-8");
+
+    Uri videoUri = null;
 
     if (video.containsKey("url_encoded_fmt_stream_map")) {
       List<String> streamQueries = new ArrayList<String>(asList(video.get("url_encoded_fmt_stream_map").split(",")));
@@ -172,8 +173,6 @@ public final class YouTubeExtractor {
         }
       }
 
-      Uri videoUri = null;
-
       for (Integer videoQuality : mPreferredVideoQualities) {
         if (streamLinks.get(videoQuality, null) != null) {
           String streamLink = streamLinks.get(videoQuality);
@@ -182,28 +181,59 @@ public final class YouTubeExtractor {
         }
       }
 
-      return videoUri;
-    } else {
-      StringBuilder builder = new StringBuilder("Status: ")
-          .append(video.get("status"))
-          .append("\nReason: ")
-          .append(video.get("reason"))
-          .append("\nError code: ")
-          .append(video.get("errorcode"));
+      final Uri mediumThumbUri = video.containsKey("iurlmq") ? Uri.parse(video.get("iurlmq")) : null;
+      final Uri highThumbUri = video.containsKey("iurlhq") ? Uri.parse(video.get("iurlhq")) : null;
+      final Uri defaultThumbUri = video.containsKey("iurl") ? Uri.parse(video.get("iurl")) : null;
+      final Uri standardThumbUri = video.containsKey("iurlsd") ? Uri.parse(video.get("iurlsd")) : null;
 
-      throw new YouTubeExtractorException(builder.toString());
+      return new YouTubeExtractorResult(videoUri, mediumThumbUri, highThumbUri, defaultThumbUri, standardThumbUri);
+    } else {
+      throw new YouTubeExtractorException("Status: " + video.get("status") + "\nReason: " + video.get("reason") + "\nError code: " + video.get("errorcode"));
     }
   }
   //endregion
 
-  public class YouTubeExtractorException extends Exception {
+  public static final class YouTubeExtractorResult {
+    private final Uri mVideoUri, mMediumThumbUri, mHighThumbUri;
+    private final Uri mDefaultThumbUri, mStandardThumbUri;
+
+    private YouTubeExtractorResult(Uri videoUri, Uri mediumThumbUri, Uri highThumbUri, Uri defaultThumbUri, Uri standardThumbUri) {
+      mVideoUri = videoUri;
+      mMediumThumbUri = mediumThumbUri;
+      mHighThumbUri = highThumbUri;
+      mDefaultThumbUri = defaultThumbUri;
+      mStandardThumbUri = standardThumbUri;
+    }
+
+    public Uri getVideoUri() {
+      return mVideoUri;
+    }
+
+    public Uri getMediumThumbUri() {
+      return mMediumThumbUri;
+    }
+
+    public Uri getHighThumbUri() {
+      return mHighThumbUri;
+    }
+
+    public Uri getDefaultThumbUri() {
+      return mDefaultThumbUri;
+    }
+
+    public Uri getStandardThumbUri() {
+      return mStandardThumbUri;
+    }
+  }
+
+  public final class YouTubeExtractorException extends Exception {
     public YouTubeExtractorException(String detailMessage) {
       super(detailMessage);
     }
   }
 
   public interface YouTubeExtractorListener {
-    public void onSuccess(Uri videoUri);
+    public void onSuccess(YouTubeExtractorResult result);
     public void onFailure(Error error);
   }
 }
