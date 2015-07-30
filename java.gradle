@@ -18,7 +18,7 @@ artifacts {
 }
 
 def getS3Repository() {
-    "s3://maven-test.flipstudio.net/"
+    "s3://maven.flipstudio.net/"
 }
 
 repositories {
