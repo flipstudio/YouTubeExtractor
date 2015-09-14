@@ -1,7 +1,9 @@
 package com.flipstudio.youtube.extractor;
 
 import android.net.Uri;
-import android.os.*;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
 import android.util.SparseArray;
 import android.webkit.MimeTypeMap;
 import java.io.BufferedReader;
@@ -233,7 +235,7 @@ public final class YouTubeExtractor {
   }
 
   public interface YouTubeExtractorListener {
-    public void onSuccess(YouTubeExtractorResult result);
-    public void onFailure(Error error);
+    void onSuccess(YouTubeExtractorResult result);
+    void onFailure(Error error);
   }
 }

@@ -1,0 +1,64 @@
+apply plugin: 'maven-publish'
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from tasks.javadoc.destinationDir
+}
+
+artifacts {
+    archives jar
+
+    archives javadocJar
+    archives sourcesJar
+}
+
+def getS3Repository() {
+    "s3://maven.flipstudio.net/"
+}
+
+repositories {
+    maven {
+        url getS3Repository()
+        credentials(AwsCredentials) {
+            accessKey AWS_ACCESS_KEY
+            secretKey AWS_SECRET_KEY
+        }
+    }
+
+    jcenter()
+    mavenCentral()
+}
+
+publishing {
+    repositories {
+        maven {
+            url getS3Repository()
+            credentials(AwsCredentials) {
+                accessKey AWS_ACCESS_KEY
+                secretKey AWS_SECRET_KEY
+            }
+        }
+    }
+
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = GROUP
+            artifactId = ARTIFACT_ID
+            version = VERSION
+            from components.java
+
+            artifact sourcesJar {
+                classifier "sources"
+            }
+
+            artifact javadocJar {
+                classifier "javadoc"
+            }
+        }
+    }
+}
